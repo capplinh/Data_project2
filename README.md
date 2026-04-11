@@ -309,7 +309,7 @@ mysql -u root -p data_lakehouse < testing/test_queries.sql
 
 ---
 
-## 🔄 Incremental Load (SCD Type 2)
+## Incremental Load (SCD Type 2)
 
 ```bash
 # Chạy định kỳ (daily batch)
@@ -324,7 +324,7 @@ docker exec -it erp_source_db psql -U erp_user -d erp_source \
 
 ---
 
-## 🗺️ Roadmap
+## Roadmap
 
 | Phase | Status | Nội dung |
 |---|---|---|
@@ -335,7 +335,7 @@ docker exec -it erp_source_db psql -U erp_user -d erp_source \
 
 ---
 
-## 🔧 Troubleshooting
+## Troubleshooting
 
 **PostgreSQL container không start:**
 ```bash
