@@ -1,0 +1,261 @@
+# ============================================
+# DATA LAKEHOUSE PROJECT - .gitignore
+# ============================================
+
+# ─── Environment & Secrets ──────────────────
+*.env
+.env.local
+.env.*.local
+config/database.ini
+secrets/
+credentials/
+
+# ─── Database Files ─────────────────────────
+# MySQL
+*.sql.backup
+*.sql.bak
+mysql_data/
+data/mysql/
+
+# PostgreSQL
+*.pgdata
+pg_data/
+postgres_data/
+
+# SQLite (if used)
+*.db
+*.sqlite
+*.sqlite3
+
+# ─── Docker ─────────────────────────────────
+# Docker volumes (data persisted locally)
+docker-compose.override.yml
+.docker/
+volumes/
+
+# ─── Python ─────────────────────────────────
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+.python-version
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# ─── Logs & Monitoring ──────────────────────
+logs/
+*.log
+*.log.*
+bronze_pipeline.log
+silver_pipeline.log
+gold_pipeline.log
+etl_*.log
+pipeline_*.log
+
+# Airflow logs (if used)
+airflow/logs/
+airflow/*.pid
+airflow/*.err
+airflow/*.out
+
+# ─── IDE & Editors ──────────────────────────
+# VSCode
+.vscode/
+*.code-workspace
+
+# PyCharm / IntelliJ
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+.vim/
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# ─── OS Generated ───────────────────────────
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# ─── Backup & Temporary Files ───────────────
+*.bak
+*.backup
+*.tmp
+*.temp
+*.old
+*.orig
+*~
+.~*
+
+# SQL dumps
+*.dump
+*.sql.gz
+*.sql.zip
+backup_*.sql
+dump_*.sql
+
+# ─── Data Files ─────────────────────────────
+# Large data files (should not be in Git)
+data/raw/
+data/processed/
+data/external/
+*.csv
+*.xlsx
+*.xls
+*.parquet
+*.avro
+*.orc
+*.json.gz
+
+# Sample data exceptions (keep small test files)
+!testing/sample_*.csv
+!testing/test_*.json
+
+# ─── Build & Cache ──────────────────────────
+*.cache
+.cache/
+.sass-cache/
+node_modules/
+bower_components/
+
+# ─── Documentation Build ────────────────────
+docs/_build/
+docs/.doctrees/
+site/
+
+# ─── Testing ────────────────────────────────
+.pytest_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Test output
+test_output/
+test_results/
+*.test.log
+
+# ─── CI/CD ──────────────────────────────────
+.github/workflows/*.log
+.gitlab-ci-local/
+
+# ─── Misc ───────────────────────────────────
+# Terraform (if used for infrastructure)
+.terraform/
+*.tfstate
+*.tfstate.backup
+.terraform.lock.hcl
+
+# AWS credentials (should never be committed)
+.aws/
+aws-credentials.json
+
+# SSH keys
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+
+# Certificates
+*.crt
+*.cer
+*.p12
+*.pfx
+
+# ─── Project Specific ───────────────────────
+# Generated SQL files (if auto-generated)
+# generated/
+
+# Temporary pipeline files
+tmp/
+temp/
+.tmp/
+
+# Performance profiling
+*.prof
+*.pstats
+
+# ============================================
+# KEEP THESE FILES (Exceptions)
+# ============================================
+# Keep example/template files
+!.env.example
+!config/database.ini.example
+!docker-compose.example.yml
+
+# Keep documentation
+!docs/**/*.md
+!*.md
+
+# Keep test fixtures
+!testing/fixtures/
+!testing/sample_data.sql
