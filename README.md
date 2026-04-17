@@ -333,10 +333,10 @@ docker exec -it erp_source_db psql -U erp_user -d erp_source \
 
 | Phase | Status | Nội dung |
 |---|---|---|
-| **Phase 1 — On-Premise** | ✅ Done | Bronze · Silver · Gold · MySQL & PostgreSQL · Idempotent pipeline |
-| **Phase 2 — Enhancement** | 🔄 In Progress | Incremental load · CDC · Data quality monitoring |
-| **Phase 3 — Orchestration** | 📋 Planned | Apache Airflow · Error handling · Alerting |
-| **Phase 4 — Cloud** | 📋 Planned | AWS S3 · Glue · Iceberg · QuickSight |
+| **Phase 1 — On-Premise** |  Done | Bronze · Silver · Gold · MySQL & PostgreSQL · Idempotent pipeline |
+| **Phase 2 — Enhancement** |  In Progress | Incremental load · CDC · Data quality monitoring |
+| **Phase 3 — Orchestration** |  Planned | Apache Airflow · Error handling · Alerting |
+| **Phase 4 — Cloud** |  Planned | AWS S3 · Glue · Iceberg · QuickSight |
 
 ---
 
