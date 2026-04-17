@@ -13,7 +13,7 @@ Dự án xây dựng **Data Lakehouse** theo kiến trúc 3-layer (Medallion Arc
 |---|---|---|
 | **Mục đích** | Production-ready pipeline | Learning & rapid testing |
 | **Source** | ERP PostgreSQL (Docker) | Sample SQL scripts |
-| **Dữ liệu** | ~45,000 rows giả lập | ~70 rows mẫu |
+| **Dữ liệu** | ~91,000 rows giả lập | ~70 rows mẫu |
 | **Highlight** | Python ELT pipeline, SCD Type 2 | Stored procedures, ETL log |
 | **Kết nối BI** | Metabase / Superset | Power BI / Tableau |
 
@@ -26,7 +26,7 @@ Dự án xây dựng **Data Lakehouse** theo kiến trúc 3-layer (Medallion Arc
 ```
 ┌──────────────────────────────┐
 │   ERP Source Database         │   PostgreSQL 16 (Docker :5433)
-│   users / orders / products   │   ~45,000 rows có dirty data
+│   users / orders / products   │   ~91,000 rows có dirty data
 └─────────────┬────────────────┘
               │  pipeline_bronze.py (Python)
               │  • Server-side cursor — chunked read
@@ -50,13 +50,13 @@ Dự án xây dựng **Data Lakehouse** theo kiến trúc 3-layer (Medallion Arc
 └─────────────┬────────────────┘
               │  gold_transform.sql (SQL thuần)
               │  • Star Schema modeling
-              │  • SCD Type 2 (dim_customers, dim_products)
+              │  • SCD Type 2 (dim_users, dim_products)
               │  • dim_date generate 2020–2030
               │  • Business Views cho BI
               ▼
 ┌──────────────────────────────┐
 │   GOLD SCHEMA                 │   Star Schema · BI-ready
-│   dim_* + fact_sales          │   Data Quality ≈ 97%
+│   dim_* + fact_*              │   Data Quality ≈ 97%
 └──────────────────────────────┘
 ```
 
@@ -80,11 +80,11 @@ Gold Tables (MySQL — Star Schema)
 Data_project2/
 │
 ├── docker-compose.yml            # PostgreSQL ERP container
-├── 📄 .env.example                  # Template credentials
-├── 📄 .gitignore
+├── .env.example                  # Template credentials
+├── .gitignore
 │
 ├── Python (PostgreSQL pipeline)
-│   ├── generate_source_data.py      # Sinh ~45K rows có dirty data
+│   ├── generate_source_data.py      # Sinh ~91K rows có dirty data
 │   └── pipeline_bronze.py           # Extract Source → Bronze
 │
 ├── bronze/
@@ -141,12 +141,12 @@ Data_project2/
     ├── QUICKSTART.md
     ├── TESTING_GUIDE.md
     ├── PROJECT_OVERVIEW.md
-    ├── GIAI_THICH_3_LAYER.md        # Giải thích tiếng Việt
+    ├── GIAI_THICH_3_LAYER.md        # Giải thích Medallion (Tiếng Việt)
     ├── MYSQL_EXECUTION_GUIDE.md
     ├── MYSQL_VS_GLUE.md
     ├── architecture_diagram.md
     ├── data_catalog.md
-    └── data_flow_bronze/silver/gold.md
+    └── data_flow_bronze_silver_gold.md
 ```
 
 ---
@@ -172,7 +172,7 @@ pip install faker psycopg2-binary python-dotenv tabulate
 
 ```bash
 # 1. Clone & chuẩn bị
-git clone https://github.com/<your-username>/Data_project2.git
+git clone https://github.com/capplinh/Data_project2.git
 cd Data_project2
 cp .env.example .env
 
@@ -185,13 +185,11 @@ python generate_source_data.py
 # 4. Bronze — Extract & Load
 python pipeline_bronze.py
 
-# 5. Silver — Clean & Standardize
-docker exec -i erp_source_db psql -U erp_user -d erp_source \
-  -f silver/silver_transform.sql
+# 5. Silver — Clean & Standardize (idempotent)
+cat silver/silver_transform.sql | docker exec -i erp_source_db psql -U erp_user -d erp_source
 
-# 6. Gold — Star Schema
-docker exec -i erp_source_db psql -U erp_user -d erp_source \
-  -f gold/gold_transform.sql
+# 6. Gold — Star Schema (idempotent)
+cat gold/gold_transform.sql | docker exec -i erp_source_db psql -U erp_user -d erp_source
 
 # 7. Kiểm tra kết quả
 docker exec -it erp_source_db psql -U erp_user -d erp_source \
@@ -231,26 +229,26 @@ mysql -u root -p data_lakehouse < gold/transform/load_dim_customers.sql
                    └──────┬───────┘
                           │
 ┌─────────────────┐  ┌────▼─────────────┐  ┌──────────────────┐
-│  dim_customers  │  │   fact_sales     │  │  dim_products    │
+│   dim_users     │  │   fact_orders    │  │  dim_products    │
 │  (SCD Type 2)  │  │──────────────────│  │  (SCD Type 2)   │
-│─────────────────│◄─│ sales_key     PK │─►│──────────────────│
-│ customer_key PK │  │ date_key      FK │  │ product_key   PK │
-│ customer_id  NK │  │ customer_key  FK │  │ product_id    NK │
-│ customer_name   │  │ product_key   FK │  │ product_name     │
-│ city / region   │  │ quantity         │  │ category         │
-│ effective_date  │  │ unit_price       │  │ unit_price       │
-│ end_date        │  │ discount_amount  │  │ effective_date   │
-│ is_current      │  │ tax_amount       │  │ end_date         │
-└─────────────────┘  │ total_amount     │  │ is_current       │
-                     └──────────────────┘  └──────────────────┘
+│─────────────────│◄─│ order_key     PK │─►│──────────────────│
+│ user_key     PK │  │ date_key      FK │  │ product_key   PK │
+│ user_id      NK │  │ user_key      FK │  │ product_id    NK │
+│ full_name       │  │ product_key   FK │  │ product_name     │
+│ city / country  │  │ quantity         │  │ category         │
+│ effective_from  │  │ unit_price       │  │ unit_price       │
+│ effective_to    │  │ discount_amount  │  │ effective_from   │
+│ is_current      │  │ total_amount     │  │ effective_to     │
+└─────────────────┘  └──────────────────┘  │ is_current       │
+                                            └──────────────────┘
 ```
 
 ### SCD Type 2 — Lịch sử thay đổi
 
 ```sql
--- Customer chuyển từ HCM → Hà Nội → vẫn phân tích được quá khứ
-customer_key=1  customer_id=42  city='Hồ Chí Minh'  effective_date='2022-01-01'  end_date='2024-05-31'  is_current=0
-customer_key=9  customer_id=42  city='Hà Nội'         effective_date='2024-06-01'  end_date=NULL          is_current=1
+-- User chuyển từ HCM → Hà Nội → vẫn phân tích được quá khứ
+user_key=1  user_id=42  city='Hồ Chí Minh'  effective_from='2022-01-01'  effective_to='2024-05-31'  is_current=false
+user_key=9  user_id=42  city='Hà Nội'        effective_from='2024-06-01'  effective_to=NULL          is_current=true
 ```
 
 ---
@@ -271,6 +269,15 @@ Dữ liệu giả lập được nhúng lỗi **có chủ đích** để chứng
 -- Xem báo cáo chất lượng dữ liệu
 SELECT * FROM silver.vw_data_quality_report;
 ```
+
+**Kết quả thực tế sau Silver:**
+
+| Entity | Bronze | Silver | Bad Email | Bad Date | Bad Amount |
+|---|---|---|---|---|---|
+| users | 4,200 | 853 | 15 | 6 | — |
+| products | 1,000 | 500 | — | — | 11 |
+| orders | 16,800 | 7,736 | — | 50 | 156 |
+| transactions | 18,900 | 9,450 | — | 56 | 185 |
 
 ---
 
@@ -295,10 +302,8 @@ SELECT * FROM gold.vw_payment_summary;
 ## Testing
 
 ```bash
-# PostgreSQL — test từng layer
-docker exec -i erp_source_db psql -U erp_user -d erp_source -f testing/test_bronze.sql
-docker exec -i erp_source_db psql -U erp_user -d erp_source -f testing/test_silver.sql
-docker exec -i erp_source_db psql -U erp_user -d erp_source -f testing/test_gold.sql
+# PostgreSQL — verify từng layer
+docker exec -i erp_source_db psql -U erp_user -d erp_source -f bronze/verify_bronze.sql
 
 # MySQL — full test suite
 ./testing/run_all_tests.sh
@@ -313,13 +318,13 @@ mysql -u root -p data_lakehouse < testing/test_queries.sql
 
 ```bash
 # Chạy định kỳ (daily batch)
-python pipeline_bronze.py                         # append batch mới
+python pipeline_bronze.py                        # append batch mới
 
-docker exec -i erp_source_db psql -U erp_user -d erp_source \
-  -f silver/silver_transform.sql                  # re-process Silver
+cat silver/silver_transform.sql | \
+  docker exec -i erp_source_db psql -U erp_user -d erp_source   # re-process Silver
 
 docker exec -it erp_source_db psql -U erp_user -d erp_source \
-  -c "CALL gold.upsert_dim_users();"              # SCD Type 2 upsert
+  -c "CALL gold.upsert_dim_users();"             # SCD Type 2 upsert
 ```
 
 ---
@@ -328,10 +333,10 @@ docker exec -it erp_source_db psql -U erp_user -d erp_source \
 
 | Phase | Status | Nội dung |
 |---|---|---|
-| **Phase 1 — On-Premise** |  Done | Bronze · Silver · Gold · MySQL & PostgreSQL |
-| **Phase 2 — Enhancement** |  In Progress | Incremental load · CDC · Data quality monitoring |
-| **Phase 3 — Orchestration** |  Planned | Apache Airflow · Error handling · Alerting |
-| **Phase 4 — Cloud** |  Planned | AWS S3 · Glue · Iceberg · QuickSight |
+| **Phase 1 — On-Premise** | ✅ Done | Bronze · Silver · Gold · MySQL & PostgreSQL · Idempotent pipeline |
+| **Phase 2 — Enhancement** | 🔄 In Progress | Incremental load · CDC · Data quality monitoring |
+| **Phase 3 — Orchestration** | 📋 Planned | Apache Airflow · Error handling · Alerting |
+| **Phase 4 — Cloud** | 📋 Planned | AWS S3 · Glue · Iceberg · QuickSight |
 
 ---
 
@@ -341,6 +346,12 @@ docker exec -it erp_source_db psql -U erp_user -d erp_source \
 ```bash
 docker logs erp_source_db
 docker compose down && docker compose up -d
+```
+
+**Silver/Gold script báo lỗi "depends on":**
+```bash
+# Script đã có idempotent — chạy thẳng, không cần drop thủ công
+cat silver/silver_transform.sql | docker exec -i erp_source_db psql -U erp_user -d erp_source
 ```
 
 **MySQL connection error:**
@@ -357,13 +368,14 @@ REPLACE(REPLACE(phone, '-', ''), ' ', '')
 
 ---
 
-##  Kỹ năng thể hiện qua project
+## Kỹ năng thể hiện qua project
 
 - **Medallion Architecture** — Bronze / Silver / Gold separation of concerns
 - **ELT Pattern** — Load raw trước, transform sau trong warehouse
 - **Data Quality Engineering** — đánh flag lỗi, không xoá, truy vết qua `_batch_id`
-- **SCD Type 2** — lịch sử thay đổi dimension (customers, products)
+- **SCD Type 2** — lịch sử thay đổi dimension (users, products)
 - **Star Schema Design** — tối ưu cho OLAP, BI tools
+- **Idempotent Pipeline** — chạy lại N lần, row count không đổi
 - **Python Pipeline** — chunked read, batch insert, logging, `.env` config
 - **Stored Procedures** — ETL log, audit trail (MySQL)
 - **Docker** — reproducible database environment
@@ -382,5 +394,6 @@ REPLACE(REPLACE(phone, '-', ''), ' ', '')
 | [MYSQL_VS_GLUE.md](docs/MYSQL_VS_GLUE.md) | So sánh on-premise vs AWS Glue |
 | [data_catalog.md](docs/data_catalog.md) | Schema & column definitions |
 
+---
 
 *Python · PostgreSQL · MySQL · Docker · SQL*
