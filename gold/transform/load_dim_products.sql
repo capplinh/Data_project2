@@ -23,8 +23,8 @@ SELECT DISTINCT
     COALESCE(p.status, 'ACTIVE') as status,
     CURDATE() as effective_date,
     TRUE as is_current
-FROM clean_crm_prd_info p
-LEFT JOIN clean_erp_px_cat_g1v2 e ON p.product_id = e.product_code
+FROM silver.clean_crm_prd_info p
+LEFT JOIN silver.clean_erp_px_cat_g1v2 e ON p.product_id = e.product_code
 WHERE NOT EXISTS (
     SELECT 1 FROM dim_products d
     WHERE d.product_id = p.product_id
@@ -43,8 +43,8 @@ SELECT DISTINCT
     'ACTIVE' as status,
     CURDATE() as effective_date,
     TRUE as is_current
-FROM clean_erp_px_cat_g1v2 e
-LEFT JOIN clean_crm_prd_info p ON e.product_code = p.product_id
+FROM silver.clean_erp_px_cat_g1v2 e
+LEFT JOIN silver.clean_crm_prd_info p ON e.product_code = p.product_id
 WHERE p.product_id IS NULL
   AND NOT EXISTS (
     SELECT 1 FROM dim_products d

@@ -27,9 +27,9 @@ SELECT DISTINCT
     COALESCE(c.status, e.account_status) as status,
     CURDATE() as effective_date,
     TRUE as is_current
-FROM clean_crm_cust_info c
-LEFT JOIN clean_erp_cust_az12 e ON c.cust_id = e.customer_code
-LEFT JOIN clean_erp_loc_a101 l ON c.city = l.city
+FROM silver.clean_crm_cust_info c
+LEFT JOIN silver.clean_erp_cust_az12 e ON c.cust_id = e.customer_code
+LEFT JOIN silver.clean_erp_loc_a101 l ON c.city = l.city
 WHERE NOT EXISTS (
     SELECT 1 FROM dim_customers d
     WHERE d.customer_id = c.cust_id
@@ -52,8 +52,8 @@ SELECT DISTINCT
     e.account_status as status,
     CURDATE() as effective_date,
     TRUE as is_current
-FROM clean_erp_cust_az12 e
-LEFT JOIN clean_crm_cust_info c ON e.customer_code = c.cust_id
+FROM silver.clean_erp_cust_az12 e
+LEFT JOIN silver.clean_crm_cust_info c ON e.customer_code = c.cust_id
 WHERE c.cust_id IS NULL
   AND NOT EXISTS (
     SELECT 1 FROM dim_customers d

@@ -19,5 +19,5 @@ SELECT DISTINCT
         ELSE 0.6
     END as data_quality_score,
     CURRENT_TIMESTAMP as processed_at
-FROM erp_cust_az12
+FROM bronze.erp_cust_az12
 WHERE customer_code IS NOT NULL;

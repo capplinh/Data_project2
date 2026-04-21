@@ -20,5 +20,5 @@ SELECT DISTINCT
         ELSE 0.6
     END as data_quality_score,
     CURRENT_TIMESTAMP as processed_at
-FROM erp_px_cat_g1v2
+FROM bronze.erp_px_cat_g1v2
 WHERE product_code IS NOT NULL;

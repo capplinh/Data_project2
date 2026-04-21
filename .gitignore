@@ -259,3 +259,9 @@ temp/
 # Keep test fixtures
 !testing/fixtures/
 !testing/sample_data.sql
+logs/
+*.log
+pipeline_dashboard.html
+__pycache__/
+*.pyc
+.DS_Store

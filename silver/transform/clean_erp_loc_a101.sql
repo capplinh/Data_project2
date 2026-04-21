@@ -23,5 +23,5 @@ SELECT DISTINCT
         ELSE 0.6
     END as data_quality_score,
     CURRENT_TIMESTAMP as processed_at
-FROM erp_loc_a101
+FROM bronze.erp_loc_a101
 WHERE location_id IS NOT NULL;

@@ -1,330 +1,286 @@
-# Data Lakehouse — Medallion Architecture (Bronze / Silver / Gold)
+# Data Lakehouse — Medallion Architecture
 
-> **Portfolio Project · Data Engineering**  
-> *On-Premise pipeline mô phỏng luồng dữ liệu ERP/CRM thực tế — từ raw ingestion đến Star Schema sẵn sàng cho BI*
+> **Portfolio Project · Data Engineering**
+> On-Premise pipeline mô phỏng luồng dữ liệu ERP/CRM thực tế — từ raw ingestion đến Star Schema sẵn sàng cho BI
 
 ---
 
-## Project Overview
+## Tổng quan
 
-Dự án xây dựng **Data Lakehouse** theo kiến trúc 3-layer (Medallion Architecture) với **2 implementations song song**:
+Dự án xây dựng **Data Lakehouse** theo kiến trúc Medallion (Bronze → Silver → Gold) với 2 implementation song song:
 
-| | PostgreSQL Version | MySQL Version |
+| | PostgreSQL | MySQL |
 |---|---|---|
-| **Mục đích** | Production-ready pipeline | Learning & rapid testing |
-| **Source** | ERP PostgreSQL (Docker) | Sample SQL scripts |
-| **Dữ liệu** | ~91,000 rows giả lập | ~70 rows mẫu |
-| **Highlight** | Python ELT pipeline, SCD Type 2 | Stored procedures, ETL log |
-| **Kết nối BI** | Metabase / Superset | Power BI / Tableau |
+| Mục đích | Production-ready pipeline | Learning & testing |
+| Source | ERP PostgreSQL (Docker) | Sample SQL scripts |
+| Dữ liệu | ~91,000 rows giả lập | ~70 rows mẫu |
+| Điểm nổi bật | Incremental load, CDC, Airflow, SCD Type 2 | Stored procedures, ETL log |
 
 ---
 
-## Architecture
-
-### PostgreSQL Version (Production)
+## Kiến trúc hệ thống
 
 ```
-┌──────────────────────────────┐
-│   ERP Source Database         │   PostgreSQL 16 (Docker :5433)
-│   users / orders / products   │   ~91,000 rows có dirty data
-└─────────────┬────────────────┘
-              │  pipeline_bronze.py (Python)
-              │  • Server-side cursor — chunked read
-              │  • Ép toàn bộ cột → TEXT
-              │  • Gắn _batch_id / _ingested_at
-              ▼
-┌──────────────────────────────┐
-│   BRONZE SCHEMA               │   Raw data · Append-only
-│   bronze.users / orders ...   │   Data Quality ≈ 0%
-└─────────────┬────────────────┘
-              │  silver_transform.sql (SQL thuần)
-              │  • Dedup    : ROW_NUMBER() PARTITION BY
-              │  • NULL     : COALESCE → 'Unknown'
-              │  • Date     : parse_date() — 6 formats
-              │  • Email    : regex validate
-              │  • Flag lỗi thay vì xoá
-              ▼
-┌──────────────────────────────┐
-│   SILVER SCHEMA               │   Cleaned & standardized
-│   silver.users / orders ...   │   Data Quality ≈ 85%
-└─────────────┬────────────────┘
-              │  gold_transform.sql (SQL thuần)
-              │  • Star Schema modeling
-              │  • SCD Type 2 (dim_users, dim_products)
-              │  • dim_date generate 2020–2030
-              │  • Business Views cho BI
-              ▼
-┌──────────────────────────────┐
-│   GOLD SCHEMA                 │   Star Schema · BI-ready
-│   dim_* + fact_*              │   Data Quality ≈ 97%
-└──────────────────────────────┘
+[ERP Source DB — PostgreSQL Docker]
+           │
+           │  pipeline_incremental.py
+           │  • Watermark-based — chỉ load rows mới
+           │  • Retry 3x + rollback khi fail
+           │  • _batch_id / _ingested_at metadata
+           ▼
+     [BRONZE SCHEMA]
+      Raw data · Append-only · Quality ≈ 0%
+           │
+           │  silver_transform.sql
+           │  • Dedup: ROW_NUMBER() PARTITION BY
+           │  • NULL: COALESCE → 'Unknown'
+           │  • Date: parse_date() — 6 formats
+           │  • Email: regex validate
+           ▼
+     [SILVER SCHEMA]
+      Cleaned & standardized · Quality ≈ 85%
+           │
+           │  gold_transform.sql
+           │  • Star Schema
+           │  • SCD Type 2
+           │  • dim_date 2020–2030
+           ▼
+     [GOLD SCHEMA]
+      Star Schema · BI-ready · Quality ≈ 97%
+           │
+           ▼
+  [MONITORING & ALERTING]
+   data_quality_monitor.py  — 15 checks
+   alerting.py              — Slack webhook
+   monitoring_dashboard.py  — HTML auto-refresh 30s
 ```
 
-### MySQL Version (Learning/Testing)
+### CDC — Change Data Capture
 
 ```
-load_sample_data.sql
-        ↓
-Bronze Tables (MySQL)
-        ↓  silver/transform/*.sql  +  sp_load_silver
-Silver Tables (MySQL)  ←── ETL log / audit trail
-        ↓  gold/transform/*.sql   +  sp_load_gold
-Gold Tables (MySQL — Star Schema)
+MySQL binlog (ROW + FULL format)
+     │
+     ▼  cdc_reader.py
+     ├── INSERT  → log new row
+     ├── UPDATE  → log before + after
+     └── DELETE  → log deleted row
+```
+
+### Orchestration — Apache Airflow
+
+```
+DAG: erp_daily_pipeline  |  schedule: 0 1 * * *  (1:00 AM daily)
+     │
+     ├── Task 1: bronze_incremental_load
+     ├── Task 2: silver_transform
+     ├── Task 3: gold_transform
+     ├── Task 4: data_quality_check
+     └── Task 5: pipeline_done
 ```
 
 ---
 
-## Cấu trúc Project
+## Cấu trúc project
 
 ```
 Data_project2/
 │
-├── docker-compose.yml            # PostgreSQL ERP container
-├── .env.example                  # Template credentials
+├── docker-compose.yml          # PostgreSQL + Airflow
+├── .env.example                # Template — KHÔNG commit .env
 ├── .gitignore
 │
-├── Python (PostgreSQL pipeline)
-│   ├── generate_source_data.py      # Sinh ~91K rows có dirty data
-│   └── pipeline_bronze.py           # Extract Source → Bronze
+├── generate_source_data.py     # Sinh ~91K rows có dirty data
+├── pipeline_bronze.py          # Full load: Source → Bronze
+├── pipeline_incremental.py     # Incremental load (watermark)
+├── data_quality_monitor.py     # 15 quality checks
+├── alerting.py                 # Slack webhook alerts
+├── cdc_reader.py               # MySQL binlog CDC
+├── monitoring_dashboard.py     # Generate HTML dashboard
+│
+├── dags/
+│   └── erp_pipeline_dag.py     # Airflow DAG
 │
 ├── bronze/
-│   ├── ddl/
-│   │   ├── crm_tables.sql           # Schema CRM tables
-│   │   └── erp_tables.sql           # Schema ERP tables
-│   ├── procedures/
-│   │   └── sp_load_bronze.sql       # Stored procedure load Bronze
-│   └── verify_bronze.sql            # Kiểm tra Bronze sau ingest
+│   ├── ddl/                    # crm_tables.sql, erp_tables.sql
+│   ├── procedures/             # sp_load_bronze.sql
+│   └── verify_bronze.sql
 │
 ├── silver/
-│   ├── ddl/
-│   │   └── silver_tables.sql        # Schema Silver tables
-│   ├── transform/
-│   │   ├── clean_crm_cust_info.sql
-│   │   ├── clean_crm_prd_info.sql
-│   │   ├── clean_crm_sales_details.sql
-│   │   ├── clean_erp_cust_az12.sql
-│   │   ├── clean_erp_loc_a101.sql
-│   │   └── clean_erp_px_cat_g1v2.sql
-│   ├── procedures/
-│   │   └── sp_load_silver.sql
-│   └── silver_transform.sql         # Master script (PostgreSQL)
+│   ├── ddl/                    # silver_tables.sql
+│   ├── transform/              # clean_crm_*.sql, clean_erp_*.sql
+│   ├── procedures/             # sp_load_silver.sql
+│   └── silver_transform.sql    # Master script
 │
 ├── gold/
-│   ├── ddl/
-│   │   ├── dim_customers.sql        # SCD Type 2
-│   │   ├── dim_products.sql         # SCD Type 2
-│   │   ├── dim_date.sql
-│   │   └── fact_sales.sql
-│   ├── transform/
-│   │   ├── load_dim_customers.sql
-│   │   ├── load_dim_products.sql
-│   │   ├── load_dim_date.sql
-│   │   └── load_fact_sales.sql
-│   ├── procedures/
-│   │   └── sp_load_gold.sql
-│   └── gold_transform.sql           # Master script (PostgreSQL)
+│   ├── ddl/                    # dim_*.sql, fact_sales.sql
+│   ├── transform/              # load_dim_*.sql, load_fact_*.sql
+│   ├── procedures/             # sp_load_gold.sql
+│   └── gold_transform.sql      # Master script
 │
 ├── testing/
-│   ├── load_sample_data.sql         # Sample data MySQL
-│   ├── test_bronze.sql
-│   ├── test_silver.sql
-│   ├── test_gold.sql
-│   ├── test_queries.sql             # Sample BI queries
-│   ├── quick_test.sh
+│   ├── load_sample_data.sql
+│   ├── test_bronze/silver/gold.sql
 │   └── run_all_tests.sh
 │
-├── setup/
-│   ├── create_schemas.sql           # Tạo schemas bronze/silver/gold
-│   └── deploy_all.sql               # Deploy toàn bộ một lệnh
-│
-└── docs/
-    ├── QUICKSTART.md
-    ├── TESTING_GUIDE.md
-    ├── PROJECT_OVERVIEW.md
-    ├── GIAI_THICH_3_LAYER.md        # Giải thích Medallion (Tiếng Việt)
-    ├── MYSQL_EXECUTION_GUIDE.md
-    ├── MYSQL_VS_GLUE.md
-    ├── architecture_diagram.md
-    ├── data_catalog.md
-    └── data_flow_bronze_silver_gold.md
+└── setup/
+    ├── create_schemas.sql
+    └── deploy_all.sql
 ```
 
 ---
 
-## Yêu cầu môi trường
+## Yêu cầu
 
 | Tool | Version | Dùng cho |
 |---|---|---|
-| Docker Desktop | ≥ 4.x | PostgreSQL container |
-| Python | ≥ 3.10 | Pipeline script |
-| MySQL | ≥ 8.0 | MySQL version |
-| psql client | any | Verify trực tiếp (tuỳ chọn) |
+| Docker Desktop | ≥ 4.x | PostgreSQL + Airflow |
+| Python | ≥ 3.10 | Pipeline scripts |
+| MySQL | ≥ 8.0 | MySQL version + CDC |
 
 ```bash
-pip install faker psycopg2-binary python-dotenv tabulate
+pip install faker psycopg2-binary python-dotenv tabulate \
+            requests mysql-replication cryptography
 ```
 
 ---
 
-## Quick Start
+## Chạy nhanh
 
-### PostgreSQL Version
+### 1. Setup
 
 ```bash
-# 1. Clone & chuẩn bị
 git clone https://github.com/capplinh/Data_project2.git
 cd Data_project2
 cp .env.example .env
+# Điền PG_PASSWORD, MYSQL_PASSWORD, SLACK_WEBHOOK_URL vào .env
 
-# 2. Khởi động Source DB
 docker compose up -d
-
-# 3. Sinh dữ liệu giả lập
-python generate_source_data.py
-
-# 4. Bronze — Extract & Load
-python pipeline_bronze.py
-
-# 5. Silver — Clean & Standardize (idempotent)
-cat silver/silver_transform.sql | docker exec -i erp_source_db psql -U erp_user -d erp_source
-
-# 6. Gold — Star Schema (idempotent)
-cat gold/gold_transform.sql | docker exec -i erp_source_db psql -U erp_user -d erp_source
-
-# 7. Kiểm tra kết quả
-docker exec -it erp_source_db psql -U erp_user -d erp_source \
-  -c "SELECT * FROM gold.vw_top_products;"
 ```
 
-### MySQL Version
+### 2. PostgreSQL Pipeline
 
 ```bash
-# Tạo database
-mysql -u root -p -e "CREATE DATABASE data_lakehouse;"
-mysql -u root -p data_lakehouse < setup/create_schemas.sql
+# Sinh dữ liệu
+python generate_source_data.py
 
-# Chạy pipeline một lệnh
-./demo_pipeline.sh
+# Bronze — incremental load
+python pipeline_incremental.py
 
-# Hoặc từng bước
-mysql -u root -p data_lakehouse < testing/load_sample_data.sql
-mysql -u root -p data_lakehouse < silver/transform/clean_crm_cust_info.sql
-mysql -u root -p data_lakehouse < gold/transform/load_dim_customers.sql
+# Silver — clean & standardize
+cat silver/silver_transform.sql | docker exec -i erp_source_db psql -U erp_user -d erp_source
+
+# Gold — Star Schema
+cat gold/gold_transform.sql | docker exec -i erp_source_db psql -U erp_user -d erp_source
+
+# Quality check
+python data_quality_monitor.py
+
+# Dashboard + Alert
+python monitoring_dashboard.py && open pipeline_dashboard.html
+python alerting.py
 ```
 
-> 📖 Xem chi tiết: [docs/QUICKSTART.md](docs/QUICKSTART.md) | [docs/MYSQL_EXECUTION_GUIDE.md](docs/MYSQL_EXECUTION_GUIDE.md)
+### 3. Airflow
+
+```bash
+open http://localhost:8080   # admin / admin
+# DAGs → erp_daily_pipeline → Trigger DAG ▶
+```
+
+### 4. CDC
+
+```bash
+# Terminal 1
+python cdc_reader.py
+
+# Terminal 2 — thay đổi data, Terminal 1 sẽ hiện event real-time
+mysql -u root -p -e "USE bronze; UPDATE cdc_test SET status='shipped' WHERE id=1;"
+```
+
+### 5. MySQL Pipeline
+
+```bash
+mysql -u root -p -e "DROP DATABASE IF EXISTS bronze; DROP DATABASE IF EXISTS silver; DROP DATABASE IF EXISTS gold;"
+./demo_pipeline.sh
+```
 
 ---
 
 ## Data Model — Gold Layer (Star Schema)
 
 ```
-                   ┌──────────────┐
-                   │   dim_date   │
-                   │  date_key PK │
-                   │  year        │
-                   │  quarter     │
-                   │  month_name  │
-                   │  is_weekend  │
-                   └──────┬───────┘
-                          │
-┌─────────────────┐  ┌────▼─────────────┐  ┌──────────────────┐
-│   dim_users     │  │   fact_orders    │  │  dim_products    │
-│  (SCD Type 2)  │  │──────────────────│  │  (SCD Type 2)   │
-│─────────────────│◄─│ order_key     PK │─►│──────────────────│
-│ user_key     PK │  │ date_key      FK │  │ product_key   PK │
-│ user_id      NK │  │ user_key      FK │  │ product_id    NK │
-│ full_name       │  │ product_key   FK │  │ product_name     │
-│ city / country  │  │ quantity         │  │ category         │
-│ effective_from  │  │ unit_price       │  │ unit_price       │
-│ effective_to    │  │ discount_amount  │  │ effective_from   │
-│ is_current      │  │ total_amount     │  │ effective_to     │
-└─────────────────┘  └──────────────────┘  │ is_current       │
-                                            └──────────────────┘
+           [dim_date]
+                │
+[dim_users] ◄──[fact_orders]──► [dim_products]
+(SCD Type 2)                     (SCD Type 2)
+                │
+        [fact_transactions]
 ```
 
-### SCD Type 2 — Lịch sử thay đổi
+### SCD Type 2
 
 ```sql
--- User chuyển từ HCM → Hà Nội → vẫn phân tích được quá khứ
+-- Khi user đổi city, row cũ đóng lại, row mới tạo ra
+-- → phân tích được "tháng 3 user này ở HCM, tháng 6 chuyển Hà Nội"
 user_key=1  user_id=42  city='Hồ Chí Minh'  effective_from='2022-01-01'  effective_to='2024-05-31'  is_current=false
 user_key=9  user_id=42  city='Hà Nội'        effective_from='2024-06-01'  effective_to=NULL          is_current=true
 ```
 
 ---
 
-## Dirty Data & Data Quality
+## Dirty Data — nhúng có chủ đích
 
-Dữ liệu giả lập được nhúng lỗi **có chủ đích** để chứng minh năng lực xử lý ở Silver:
-
-| Loại lỗi | Tỉ lệ | Cột bị ảnh hưởng | Giải pháp Silver |
+| Loại lỗi | Tỉ lệ | Cột | Giải pháp Silver |
 |---|---|---|---|
 | Duplicate rows | ~5% | users, orders, transactions | `ROW_NUMBER() PARTITION BY` |
-| NULL values | ~8% | phone, city, supplier | `COALESCE` → `'Unknown'` |
-| Sai format ngày | ~3% | order_date, txn_date | Custom `parse_date()` — 6 formats |
-| Giá trị âm | ~2% | amount, unit_price | `CASE WHEN > 0` → NULL |
-| Email sai format | ~1% | users.email | Regex validate |
+| NULL values | ~8% | phone, city, supplier | `COALESCE → 'Unknown'` |
+| Sai format ngày | ~3% | order_date, txn_date | `parse_date()` — 6 formats |
+| Giá trị âm | ~2% | amount, unit_price | `CASE WHEN > 0` |
+| Email sai format | ~1% | email | Regex validate |
 
-```sql
--- Xem báo cáo chất lượng dữ liệu
-SELECT * FROM silver.vw_data_quality_report;
-```
+**Kết quả thực tế:**
 
-**Kết quả thực tế sau Silver:**
-
-| Entity | Bronze | Silver | Bad Email | Bad Date | Bad Amount |
-|---|---|---|---|---|---|
-| users | 4,200 | 853 | 15 | 6 | — |
-| products | 1,000 | 500 | — | — | 11 |
-| orders | 16,800 | 7,736 | — | 50 | 156 |
-| transactions | 18,900 | 9,450 | — | 56 | 185 |
+| Table | Bronze | Silver | Ghi chú |
+|---|---|---|---|
+| users | 4,200 | 853 | Dedup theo email |
+| orders | 16,800 | 7,736 | Filter bad date + amount |
+| products | 1,000 | 500 | Dedup |
+| transactions | 18,900 | 9,450 | Dedup + filter âm |
 
 ---
 
 ## Sample BI Queries
 
 ```sql
--- Doanh thu theo tháng & danh mục sản phẩm
 SELECT * FROM gold.vw_revenue_by_month_category WHERE year = 2024;
-
--- Top 10 sản phẩm bán chạy
 SELECT * FROM gold.vw_top_products;
-
--- Phân tích buyer theo thành phố
 SELECT * FROM gold.vw_user_orders_by_city ORDER BY total_revenue DESC;
-
--- Hiệu suất phương thức thanh toán
 SELECT * FROM gold.vw_payment_summary;
 ```
 
 ---
 
-## Testing
+## Troubleshooting
 
+**PostgreSQL không start:**
 ```bash
-# PostgreSQL — verify từng layer
-docker exec -i erp_source_db psql -U erp_user -d erp_source -f bronze/verify_bronze.sql
-
-# MySQL — full test suite
-./testing/run_all_tests.sh
-
-# Sample BI queries
-mysql -u root -p data_lakehouse < testing/test_queries.sql
+docker compose down && docker compose up -d
 ```
 
----
-
-## Incremental Load (SCD Type 2)
-
+**Silver/Gold — chạy lại idempotent:**
 ```bash
-# Chạy định kỳ (daily batch)
-python pipeline_bronze.py                        # append batch mới
+cat silver/silver_transform.sql | docker exec -i erp_source_db psql -U erp_user -d erp_source
+```
 
-cat silver/silver_transform.sql | \
-  docker exec -i erp_source_db psql -U erp_user -d erp_source   # re-process Silver
+**MySQL port = 0 (recovery mode):**
+```bash
+sudo kill -9 $(pgrep mysqld) && brew services start mysql
+```
 
-docker exec -it erp_source_db psql -U erp_user -d erp_source \
-  -c "CALL gold.upsert_dim_users();"             # SCD Type 2 upsert
+**MySQL pipeline reset:**
+```bash
+mysql -u root -p -e "DROP DATABASE IF EXISTS bronze; DROP DATABASE IF EXISTS silver; DROP DATABASE IF EXISTS gold;"
+./demo_pipeline.sh
 ```
 
 ---
@@ -333,67 +289,30 @@ docker exec -it erp_source_db psql -U erp_user -d erp_source \
 
 | Phase | Status | Nội dung |
 |---|---|---|
-| **Phase 1 — On-Premise** |  Done | Bronze · Silver · Gold · MySQL & PostgreSQL · Idempotent pipeline |
-| **Phase 2 — Enhancement** |  In Progress | Incremental load · CDC · Data quality monitoring |
-| **Phase 3 — Orchestration** |  Planned | Apache Airflow · Error handling · Alerting |
-| **Phase 4 — Cloud** |  Planned | AWS S3 · Glue · Iceberg · QuickSight |
+| Phase 1 — On-Premise |  Done | Bronze · Silver · Gold · MySQL & PostgreSQL · Idempotent |
+| Phase 2 — Enhancement | Done | Incremental load · CDC · DQ monitor · Error handling · Alerting · Dashboard |
+| Phase 3 — Orchestration |  Done | Apache Airflow · DAG daily · Retry · Graph view |
+| Phase 4 — Cloud |  In Progress | AWS S3 · Glue · Iceberg · Athena · QuickSight |
 
 ---
 
-## Troubleshooting
-
-**PostgreSQL container không start:**
-```bash
-docker logs erp_source_db
-docker compose down && docker compose up -d
-```
-
-**Silver/Gold script báo lỗi "depends on":**
-```bash
-# Script đã có idempotent — chạy thẳng, không cần drop thủ công
-cat silver/silver_transform.sql | docker exec -i erp_source_db psql -U erp_user -d erp_source
-```
-
-**MySQL connection error:**
-```bash
-brew services list | grep mysql    # macOS
-sudo systemctl status mysql        # Linux
-```
-
-**REGEXP_REPLACE lỗi trên MySQL < 8.0:**
-```sql
--- Dùng REPLACE thay thế
-REPLACE(REPLACE(phone, '-', ''), ' ', '')
-```
-
----
-
-## Kỹ năng thể hiện qua project
+## Kỹ năng thể hiện
 
 - **Medallion Architecture** — Bronze / Silver / Gold separation of concerns
 - **ELT Pattern** — Load raw trước, transform sau trong warehouse
-- **Data Quality Engineering** — đánh flag lỗi, không xoá, truy vết qua `_batch_id`
-- **SCD Type 2** — lịch sử thay đổi dimension (users, products)
-- **Star Schema Design** — tối ưu cho OLAP, BI tools
+- **Incremental Load** — watermark-based, chỉ load data mới
+- **CDC** — MySQL binlog ROW format, detect INSERT/UPDATE/DELETE real-time
+- **Data Quality** — 15 checks, flag lỗi thay vì xoá, truy vết qua `_batch_id`
+- **Error Handling** — retry 3x, rollback batch, pipeline run log
+- **Alerting** — Slack webhook, severity WARNING/CRITICAL
+- **Monitoring** — HTML dashboard auto-refresh 30s
+- **Apache Airflow** — DAG, cron schedule, dependency graph
+- **SCD Type 2** — lịch sử thay đổi dimension
+- **Star Schema** — tối ưu cho OLAP và BI
 - **Idempotent Pipeline** — chạy lại N lần, row count không đổi
-- **Python Pipeline** — chunked read, batch insert, logging, `.env` config
-- **Stored Procedures** — ETL log, audit trail (MySQL)
-- **Docker** — reproducible database environment
-- **Advanced SQL** — Window functions, CTEs, custom functions, `GENERATE_SERIES`
+- **Docker** — reproducible environment (PostgreSQL + Airflow)
+- **Advanced SQL** — Window functions, CTEs, custom functions
 
 ---
 
-## Documentation
-
-| File | Nội dung |
-|---|---|
-| [QUICKSTART.md](docs/QUICKSTART.md) | Chạy nhanh trong 5 phút |
-| [TESTING_GUIDE.md](docs/TESTING_GUIDE.md) | Test từng layer |
-| [GIAI_THICH_3_LAYER.md](docs/GIAI_THICH_3_LAYER.md) | Giải thích Medallion (Tiếng Việt) |
-| [MYSQL_EXECUTION_GUIDE.md](docs/MYSQL_EXECUTION_GUIDE.md) | Hướng dẫn MySQL version |
-| [MYSQL_VS_GLUE.md](docs/MYSQL_VS_GLUE.md) | So sánh on-premise vs AWS Glue |
-| [data_catalog.md](docs/data_catalog.md) | Schema & column definitions |
-
----
-
-*Python · PostgreSQL · MySQL · Docker · SQL*
+*Python · PostgreSQL · MySQL · Docker · Apache Airflow · CDC · SQL*

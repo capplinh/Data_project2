@@ -20,6 +20,6 @@ SELECT DISTINCT
         ELSE 0.6
     END as data_quality_score,
     CURRENT_TIMESTAMP as processed_at
-FROM crm_prd_info
+FROM bronze.crm_prd_info
 WHERE product_id IS NOT NULL
   AND unit_price >= 0;

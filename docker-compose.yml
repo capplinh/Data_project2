@@ -1,28 +1,45 @@
-# ─── docker-compose.yml ───────────────────────────────────────────────────────
-# Mục đích: Dựng PostgreSQL đóng vai "ERP Source Database"
-# Chạy:  docker compose up -d
-# ─────────────────────────────────────────────────────────────────────────────
-
 version: "3.9"
-
 services:
   erp_postgres:
     image: postgres:16-alpine
     container_name: erp_source_db
     restart: unless-stopped
     environment:
-      POSTGRES_DB:       erp_source
-      POSTGRES_USER:     erp_user
-      POSTGRES_PASSWORD: 123456
+      POSTGRES_DB:       ${PG_DB}
+      POSTGRES_USER:     ${PG_USER}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
     ports:
-      - "5433:5432"       # dùng 5433 để tránh xung đột port local
+      - "5433:5432"
     volumes:
       - erp_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U erp_user -d erp_source"]
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER} -d ${PG_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
+
+  airflow:
+    image: apache/airflow:2.8.1
+    container_name: airflow
+    depends_on:
+      - erp_postgres
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${PG_USER}:${PG_PASSWORD}@erp_source_db:5432/${PG_DB}
+      AIRFLOW__CORE__FERNET_KEY: ''
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__WEBSERVER__SECRET_KEY: 'data_project2_secret'
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+    ports:
+      - "8080:8080"
+    command: >
+      bash -c "airflow db init &&
+               airflow users create --username admin --password admin
+               --firstname Admin --lastname User --role Admin
+               --email admin@example.com || true &&
+               airflow webserver & airflow scheduler"
 
 volumes:
   erp_pgdata:

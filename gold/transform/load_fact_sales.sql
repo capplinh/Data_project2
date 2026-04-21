@@ -18,7 +18,7 @@ SELECT
     s.tax_amount,
     s.total_amount,
     s.payment_method
-FROM clean_crm_sales_details s
+FROM silver.clean_crm_sales_details s
 INNER JOIN dim_customers dc 
     ON s.cust_id = dc.customer_id AND dc.is_current = TRUE
 INNER JOIN dim_products dp 

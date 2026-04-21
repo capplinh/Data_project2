@@ -23,6 +23,6 @@ SELECT DISTINCT
         ELSE 0.5
     END as data_quality_score,
     CURRENT_TIMESTAMP as processed_at
-FROM crm_cust_info
+FROM bronze.crm_cust_info
 WHERE cust_id IS NOT NULL
   AND (email IS NULL OR email REGEXP '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$');

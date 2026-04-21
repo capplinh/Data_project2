@@ -24,7 +24,7 @@ SELECT DISTINCT
         ELSE 0.5
     END as data_quality_score,
     CURRENT_TIMESTAMP as processed_at
-FROM crm_sales_details
+FROM bronze.crm_sales_details
 WHERE transaction_id IS NOT NULL
   AND quantity > 0
   AND total_amount >= 0;
